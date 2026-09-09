@@ -16,13 +16,15 @@ test("registry exposes reach, sales and a domain-independent agent", () => {
 });
 test("CLI separates --agent from question text", () => {
   assert.deepEqual(parseCliArgs(["--agent", "minimal", "hello", "world"]), { agentId: "minimal", question: ["hello", "world"] });
+  assert.deepEqual(parseCliArgs(["--agent", "minimal", "--session", "work", "hello"]), { agentId: "minimal", sessionId: "work", question: ["hello"] });
   assert.throws(() => parseCliArgs(["--agent"]), /需要/);
 });
 
 test("Web separates --agent from server startup", () => {
   assert.deepEqual(parseServerArgs([]), { agentId: undefined });
-  assert.deepEqual(parseServerArgs(["--agent", "minimal"]), { agentId: "minimal" });
+  assert.deepEqual(parseServerArgs(["--agent", "minimal", "--session", "work"]), { agentId: "minimal", sessionId: "work" });
   assert.throws(() => parseServerArgs(["--agent"]), /需要/);
+  assert.throws(() => parseServerArgs(["--session"]), /需要/);
   assert.throws(() => parseServerArgs(["--unknown"]), /未知参数/);
   assert.throws(() => parseServerArgs(["--agent", "sales", "--agent", "minimal"]), /只能指定一次/);
 });

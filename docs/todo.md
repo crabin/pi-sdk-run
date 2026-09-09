@@ -1,5 +1,10 @@
-* [X]  在web和cli模型下中加入可以选择agent的功能，web在上面的中间有一个下拉框来选择已有的不同的agent，cli使用/agent来选择，首先给出优化计划。要求符合当前项目的情况-一个sdk的范式，代码简单明了，结构简单。
-* [X]  优化前端web的给出大答案时候的回答的UI优化，渲染md格式，这里使用轻量的组件，符合项目情况，代码、结构简单实用
-* [ ]  按照当前项目的情况来优化readme内容
-* [ ]  这个项目启动是否有记忆隔离，记忆、session保存在哪里
-* [ ]  优化保存到本地项目， 优先保存到 .pi/ 中
+- [x] 在web和cli模型下中加入可以选择agent的功能，web在上面的中间有一个下拉框来选择已有的不同的agent，cli使用/agent来选择，首先给出优化计划。要求符合当前项目的情况-一个sdk的范式，代码简单明了，结构简单。
+- [x] 优化前端web的给出大答案时候的回答的UI优化，渲染md格式，这里使用轻量的组件，符合项目情况，代码、结构简单实用
+- [x] 按照当前项目的情况来优化readme内容
+- [x] 使用ego进行测试并截屏然后更新readme文档，最后推送到云端git 仓库
+- [ ] 这个项目启动是否有记忆隔离，记忆、session保存在哪里
+  - [ ] Agent + session 级隔离，跨重启持久化到 `.pi/sessions/`。
+- [x] session 持久化
+  - [x] 优化 session 保存到本项目文件夹，优先保存到 `.pi/` 中
+  - [x] 落实完整计划 [session-persistence-optimization-plan.md](session-persistence-optimization-plan.md)
+  - [x] 问题：web UI中对话无法正常进行，查看sesion日志，日志中记录问题，使用ego进行测试，然后修复这个问题

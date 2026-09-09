@@ -107,6 +107,8 @@ export function renderMarkdown(document, root, markdown) {
 
 export function initializePage(document, fetchImpl = fetch) {
   const chat = document.getElementById("chat"), input = document.getElementById("msg"), sendButton = document.getElementById("send"), stopButton = document.getElementById("stop"), agentSelect = document.getElementById("agent"), agentDescription = document.getElementById("agent-description"), dot = document.getElementById("dot"), statusText = document.getElementById("status-text"), hint = document.getElementById("hint");
+  const sessionStorageKey = "data-agent-session-id";
+  const sessionId = (() => { try { const existing = globalThis.localStorage?.getItem(sessionStorageKey); if (existing) return existing; const value = globalThis.crypto?.randomUUID?.() ?? `browser-${Date.now()}-${Math.random().toString(36).slice(2)}`; globalThis.localStorage?.setItem(sessionStorageKey, value); return value; } catch { return "browser-default"; } })();
   let bubble, thinking, busy = false, ready = false, controller, agents = [], answerText = "";
   const updateDescription = () => { if (agentDescription) agentDescription.textContent = agents.find((item) => item.id === agentSelect?.value)?.description ?? ""; };
   const setBusy = (value) => { busy = value; sendButton.style.display = value ? "none" : "inline-block"; stopButton.style.display = value ? "inline-block" : "none"; sendButton.disabled = !ready || value; input.disabled = !ready || value; if (agentSelect) agentSelect.disabled = !ready || value; dot.className = value ? "busy" : ""; statusText.textContent = value ? "思考中…" : ready ? "就绪" : "Agent 不可用"; if (!value && ready) input.focus(); };
@@ -133,7 +135,7 @@ export function initializePage(document, fetchImpl = fetch) {
     setBusy(true); const user = document.createElement("div"); user.className = "bubble user"; user.textContent = message; chat.appendChild(user); input.value = ""; bubble = undefined; thinking = undefined; answerText = "";
     controller = new AbortController(); let receivedDone = false;
     try {
-      const response = await fetchImpl("/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: agentSelect.value, message }), signal: controller.signal });
+      const response = await fetchImpl("/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: agentSelect.value, sessionId, message }), signal: controller.signal });
       if (!response.ok) { let detail = {}; try { detail = await response.json(); } catch {} throw new Error(detail.error || `HTTP ${response.status}`); }
       if (!response.body) throw new Error("服务器没有返回响应流");
       const parser = createSseParser((event) => { if (event.type === "done") receivedDone = true; handle(event); }, () => showError("收到无法解析的流数据"));

@@ -57,6 +57,15 @@ test("text emitted after a tool is rendered after the tool card", async () => {
   assert.deepEqual(items.slice(1).map((item) => item.textContent?.includes("调用后")), [false, false, true]);
 });
 
+test("server model errors remain visible in the conversation", async () => {
+  const dom = new JSDOM(`<!doctype html><body><select id="agent"></select><span id="agent-description"></span><div id="chat"><div id="hint"></div></div><textarea id="msg"></textarea><button id="send"></button><button id="stop"></button><span id="dot"></span><span id="status-text"></span></body>`);
+  const page = initializePage(dom.window.document, async () => agentResponse()); await page.loadAgents;
+  page.handle({ type: "error", data: { message: "upstream unavailable" } });
+  page.handle({ type: "done", data: {} });
+  assert.match(dom.window.document.querySelector("#chat")!.textContent ?? "", /出错：upstream unavailable/);
+  assert.equal(dom.window.document.querySelector("#status-text")!.textContent, "就绪");
+});
+
 test("busy state visibly exposes the stop button and abort restores the UI", async () => {
   const dom = new JSDOM(`<!doctype html><body><select id="agent"></select><span id="agent-description"></span><div id="chat"><div id="hint"></div></div><textarea id="msg"></textarea><button id="send"></button><button id="stop" style="display:none"></button><span id="dot"></span><span id="status-text"></span></body>`, { pretendToBeVisual: true });
   let rejectFetch!: (error: Error) => void;
@@ -92,7 +101,7 @@ test("client loads selection, sends agentId, disables it while busy, and updates
   select.value = "reach"; select.dispatchEvent(new dom.window.Event("change"));
   (dom.window.document.querySelector("#msg") as HTMLTextAreaElement).value = "hello";
   const sending = page.send(); assert.equal(select.disabled, true); await sending;
-  assert.deepEqual(JSON.parse(requestBody), { agentId: "reach", message: "hello" }); assert.equal(select.disabled, false);
+  const sent = JSON.parse(requestBody); assert.deepEqual({ agentId: sent.agentId, message: sent.message }, { agentId: "reach", message: "hello" }); assert.match(sent.sessionId, /^[A-Za-z0-9-]+$/); assert.equal(select.disabled, false);
 });
 
 test("agent loading failure disables chat and shows a safe error", async () => {

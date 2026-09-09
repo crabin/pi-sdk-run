@@ -1,15 +1,16 @@
-import { realpath } from "node:fs/promises";
+import { chmod, mkdir, readdir, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, type AgentSession, type ResourceDiagnostic, type Skill } from "@earendil-works/pi-coding-agent";
 import type { AgentRunner, EventHandler } from "../events.js";
-import { projectRoot, projectSkillsDirectory } from "../paths.js";
+import { defaultSessionId, projectRoot, projectSkillsDirectory, resolveAgentSessionDirectory } from "../paths.js";
 import { translateEvent } from "../sse.js";
-import { readRuntimeConfig, selectModel, type RuntimeConfig } from "../config.js";
+import { readRuntimeConfig, selectModel, type RuntimeConfig, type SessionRecovery } from "../config.js";
 import type { AgentDefinition, ResourceMode } from "./definition.js";
 
 export interface Logger { info(message: string): void; warn(message: string): void; error(message: string, error?: unknown): void }
 export const consoleLogger: Logger = console;
 export class RunnerError extends Error { constructor(readonly code: "busy" | "disposed", message: string) { super(message); } }
+export type CreateAgentRunnerOptions = Partial<RuntimeConfig> & { sessionId?: string };
 const diagnosticSummary = (d: ResourceDiagnostic) => `[skill:${d.type}] ${d.message}`;
 export async function validateProjectSkills(skills: Skill[], diagnostics: ResourceDiagnostic[], expectedNamesOrFile: string[] | string, logger: Logger = consoleLogger): Promise<void> {
   for (const d of diagnostics) (d.type === "error" ? logger.error : logger.warn).call(logger, diagnosticSummary(d));
@@ -45,17 +46,39 @@ export class SdkAgentRunner implements AgentRunner {
   async abort() { if (!this.disposed && this.session.isStreaming) await this.session.abort(); }
   async dispose() { if (this.disposed) return; await this.abort(); this.disposed = true; this.session.dispose(); }
 }
-export async function createAgentRunner(definition: AgentDefinition, overrides: Partial<RuntimeConfig> = {}, logger: Logger = consoleLogger): Promise<AgentRunner> {
+export async function createPersistentSessionManager(directory: string, recovery: SessionRecovery, logger: Logger = consoleLogger): Promise<SessionManager> {
+  try {
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await chmod(directory, 0o700);
+    const files = (await readdir(directory)).filter((name) => name.endsWith(".jsonl"));
+    if (files.length === 0) return SessionManager.create(projectRoot, directory);
+    const sessions = await SessionManager.list(projectRoot, directory);
+    if (sessions.length !== files.length) {
+      const message = `Session 目录包含 ${files.length - sessions.length} 个损坏或不可读文件：${directory}`;
+      if (recovery === "fail") throw new Error(message);
+      logger.warn(`${message}；已按 PI_SESSION_RECOVERY=new 创建新会话。`);
+      return SessionManager.create(projectRoot, directory);
+    }
+    return SessionManager.open(sessions[0]!.path, directory, projectRoot);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Session 目录包含")) throw error;
+    throw new Error(`Session 目录无法初始化：${directory}；${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  }
+}
+
+export async function createAgentRunner(definition: AgentDefinition, overrides: CreateAgentRunnerOptions = {}, logger: Logger = consoleLogger): Promise<AgentRunner> {
   const config = { ...readRuntimeConfig(), ...overrides }; const resourceMode = config.resourceMode ?? definition.resourceMode ?? "project-only";
   const runtime = await ModelRuntime.create({ authPath: resolve(config.agentDir, "auth.json"), modelsPath: resolve(config.agentDir, "models.json") });
   const requested = config.provider && config.model ? { provider: config.provider, id: config.model } : definition.model;
   const model = selectModel(await runtime.getAvailable(), requested);
   const resourceLoader = await createProjectResourceLoader(definition, resourceMode, config.agentDir, logger);
-  const { session } = await createAgentSession({ cwd: projectRoot, agentDir: config.agentDir, modelRuntime: runtime, model, resourceLoader, sessionManager: SessionManager.inMemory(), customTools: definition.tools, tools: definition.activeToolNames });
+  const sessionId = config.sessionId ?? defaultSessionId;
+  const sessionManager = config.sessionMode === "memory" ? SessionManager.inMemory(projectRoot) : await createPersistentSessionManager(resolveAgentSessionDirectory(definition.id, sessionId, config.sessionDir), config.sessionRecovery, logger);
+  const { session } = await createAgentSession({ cwd: projectRoot, agentDir: config.agentDir, modelRuntime: runtime, model, resourceLoader, sessionManager, customTools: definition.tools, tools: definition.activeToolNames });
   const active = session.getActiveToolNames().slice().sort(), expected = definition.activeToolNames.slice().sort();
   if (JSON.stringify(active) !== JSON.stringify(expected)) { session.dispose(); throw new Error(`Agent 工具权限不匹配：期望 ${expected.join(", ")}；实际 ${active.join(", ")}`); }
   for (const name of expected) if (!session.getAllTools().some((tool) => tool.name === name)) { session.dispose(); throw new Error(`Agent 工具定义缺失：${name}`); }
   const metadata = { id: definition.id, description: definition.description, provider: model.provider, model: model.id, resourceMode };
-  logger.info(`Agent=${metadata.id} model=${metadata.provider}/${metadata.model} resources=${resourceMode} tools=${active.join(",") || "none"}`);
+  logger.info(`Agent=${metadata.id} session=${sessionId} persistence=${config.sessionMode} file=${session.sessionFile ?? "memory"} model=${metadata.provider}/${metadata.model} resources=${resourceMode} tools=${active.join(",") || "none"}`);
   return new SdkAgentRunner(session, metadata);
 }

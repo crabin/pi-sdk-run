@@ -17,10 +17,11 @@ test("manager lists registry summaries without exposing definitions", () => {
 
 test("manager lazily creates and reuses independent runners", async () => {
   const created: string[] = [];
-  const manager = new AgentManager(async (definition) => { created.push(definition.id); return runner().value; });
+  const manager = new AgentManager(async (definition, options) => { created.push(`${definition.id}:${options?.sessionId}`); return runner().value; });
   const [first, concurrent] = await Promise.all([manager.get("reach"), manager.get("reach")]);
+  const named = await manager.get("reach", "work");
   const other = await manager.get("sales");
-  assert.equal(first, concurrent); assert.notEqual(first, other); assert.deepEqual(created, ["reach", "sales"]);
+  assert.equal(first, concurrent); assert.notEqual(first, named); assert.notEqual(first, other); assert.deepEqual(created, ["reach:default", "reach:work", "sales:default"]);
   await manager.dispose();
 });
 

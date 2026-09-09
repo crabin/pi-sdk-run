@@ -25,3 +25,9 @@ test("text, thinking, and tool results translate with the compatibility limit", 
   assert.equal(end?.type === "tool_end" ? end.data.result.length : 0, 500);
   assert.equal(end?.type === "tool_end" && end.data.isError, true);
 });
+
+test("a final model failure is translated into a visible SSE error", () => {
+  const event = { type: "agent_end", willRetry: false, messages: [{ role: "assistant", content: [], stopReason: "error", errorMessage: "upstream unavailable" }] } as AgentSessionEvent;
+  assert.deepEqual(translateEvent(event), { type: "error", data: { message: "upstream unavailable" } });
+  assert.equal(translateEvent({ ...event, willRetry: true }), null);
+});

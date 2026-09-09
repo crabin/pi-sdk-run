@@ -87,6 +87,24 @@ test("busy request gets 429 and shutdown is idempotent", async () => {
   assert.equal(fake.aborts(), 1); assert.equal(fake.disposals(), 1);
 });
 
+test("shutdown waits for an active prompt to settle before disposing the manager", async () => {
+  let release!: () => void, settled = false, disposedAfterSettle = false;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  const agent: DataAgent = {
+    modelName: "fake",
+    async prompt() { try { await pending; } finally { settled = true; } },
+    async abort() { setTimeout(release, 20); },
+    async dispose() { disposedAfterSettle = settled; },
+  };
+  const service = createDataAgentServer(provider({ reach: agent }), { heartbeatMs: 10 });
+  service.server.listen(0, "127.0.0.1"); await once(service.server, "listening");
+  const url = `http://127.0.0.1:${(service.server.address() as AddressInfo).port}`;
+  const request = fetch(`${url}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"message":"wait"}' });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  await service.shutdown(); await request;
+  assert.equal(settled, true); assert.equal(disposedAfterSettle, true);
+});
+
 test("agents endpoint exposes safe summaries and startup selection", async () => {
   const fake = makeAgent(), sales = makeAgent();
   const service = createDataAgentServer(provider({ reach: fake.agent, sales: sales.agent }), { initialAgentId: "sales" });
@@ -129,4 +147,41 @@ test("busy state is isolated per agent", async () => {
   const independent = await fetch(`${url}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"agentId":"sales","message":"three"}' });
   assert.equal(busy.status, 429); assert.equal(independent.status, 200);
   release(); await first; await service.shutdown();
+});
+
+test("chat reserves a cold session before runner creation and isolates different sessions", async () => {
+  const requests: string[] = [];
+  const releases = new Map<string, () => void>();
+  const agents = new Map<string, DataAgent>();
+  const manager: AgentProvider = {
+    list: () => [{ id: "reach", description: "reach agent" }],
+    async get(_id = "reach", sessionId = "default") {
+      requests.push(`create:${sessionId}`);
+      await new Promise<void>((resolve) => setTimeout(resolve, 20));
+      let agent = agents.get(sessionId);
+      if (!agent) {
+        agent = makeAgent(async () => new Promise<void>((resolve) => { releases.set(sessionId, resolve); })).agent;
+        agents.set(sessionId, agent);
+      }
+      return agent;
+    },
+    async dispose() { for (const agent of agents.values()) await agent.dispose(); },
+  };
+  const service = createDataAgentServer(manager);
+  service.server.listen(0, "127.0.0.1"); await once(service.server, "listening");
+  const url = `http://127.0.0.1:${(service.server.address() as AddressInfo).port}`;
+  try {
+    const headers = { "content-type": "application/json" };
+    const first = fetch(`${url}/chat`, { method: "POST", headers, body: '{"sessionId":"one","message":"a"}' });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const duplicate = await fetch(`${url}/chat`, { method: "POST", headers, body: '{"sessionId":"one","message":"duplicate"}' });
+    assert.equal(duplicate.status, 429);
+    const independent = fetch(`${url}/chat`, { method: "POST", headers, body: '{"sessionId":"two","message":"b"}' });
+    while (!releases.has("one") || !releases.has("two")) await new Promise((resolve) => setTimeout(resolve, 2));
+    assert.deepEqual(requests.sort(), ["create:one", "create:two"]);
+    releases.get("one")!(); releases.get("two")!();
+    assert.equal((await first).status, 200); assert.equal((await independent).status, 200);
+    const invalid = await fetch(`${url}/chat`, { method: "POST", headers, body: '{"sessionId":"../escape","message":"x"}' });
+    assert.equal(invalid.status, 400);
+  } finally { await service.shutdown(); }
 });

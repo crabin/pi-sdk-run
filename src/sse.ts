@@ -23,6 +23,12 @@ export function normalizeJson(value: unknown, seen = new WeakSet<object>()): Jso
 }
 
 export function translateEvent(event: AgentSessionEvent): StreamEvent | null {
+  if (event.type === "agent_end" && !event.willRetry) {
+    const last = event.messages.at(-1);
+    if (last?.role === "assistant" && last.stopReason === "error") {
+      return { type: "error", data: { message: last.errorMessage || "模型请求失败" } };
+    }
+  }
   if (event.type === "message_update") {
     const update = event.assistantMessageEvent;
     if (update.type === "text_delta") return { type: "text", data: { delta: update.delta } };

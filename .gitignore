@@ -2,11 +2,16 @@ node_modules/
 dist/
 .env
 .pi-config/
+.pi/
 *.log
 .DS_Store
 
 # Local documentation and work-in-progress notes
-docs/
+docs/*
+!docs/
+!docs/session-persistence-optimization-plan.md
+!docs/images/
+!docs/images/web-agent-selector.png
 findings/
 progress/
 taskplan/
