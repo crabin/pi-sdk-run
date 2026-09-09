@@ -12,6 +12,7 @@ docs/*
 !docs/session-persistence-optimization-plan.md
 !docs/images/
 !docs/images/web-agent-selector.png
+!docs/images/web-answer-japan-rate-cut.png
 findings/
 progress/
 taskplan/

@@ -35,6 +35,10 @@ npm start
 
 已使用 Ego Browser 验证页面加载、Agent 切换、说明文字同步、就绪状态展示，以及浏览器 sessionId 的本地生成。
 
+下面是 `reach` Agent 回答“日本降息的后果”时的长答案、Markdown 列表与来源说明渲染效果：
+
+![reach Agent 回答日本降息后果的页面效果](docs/images/web-answer-japan-rate-cut.png)
+
 ### 配置 Pi SDK
 
 默认配置目录是项目根目录下的 `.pi-config/`，该目录已被 `.gitignore` 忽略。请在其中准备 Pi SDK 所需的模型和认证配置，例如 `models.json` 与 `auth.json`。不要把 API Key 或其他凭据提交到 Git。

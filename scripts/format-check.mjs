@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 const root = new URL("../", import.meta.url);
 const excluded = new Set([".codegraph", ".git", ".pi-config", "dist", "node_modules"]);
 const excludedFiles = new Set([".DS_Store", ".env"]);
+const excludedExtensions = new Set([".png"]);
 const walk = (directory = root, prefix = "") => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
   const relative = `${prefix}${entry.name}`;
   if (entry.isDirectory()) return excluded.has(entry.name) ? [] : walk(new URL(`${entry.name}/`, directory), `${relative}/`);
@@ -16,6 +17,7 @@ try {
 }
 const bad = [];
 for (const file of files) {
+  if ([...excludedExtensions].some((extension) => file.endsWith(extension))) continue;
   const text = readFileSync(new URL(file, root), "utf8");
   if (/\r|[ \t]+$/m.test(text) || (text.length > 0 && !text.endsWith("\n"))) bad.push(file);
 }
