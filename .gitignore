@@ -4,3 +4,12 @@ dist/
 .pi-config/
 *.log
 .DS_Store
+
+# Local documentation and work-in-progress notes
+docs/
+findings/
+progress/
+taskplan/
+findings.md
+progress.md
+task_plan.md
